@@ -1,0 +1,1 @@
+"""Simkl provider for AniBridge."""
