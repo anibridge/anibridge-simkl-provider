@@ -1,13 +1,13 @@
 """Simkl REST client."""
 
 import importlib.metadata
-import json
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import ClassVar
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
+import msgspec
 from anibridge.utils.limiter import Limiter
 from anibridge.utils.types import ProviderLogger
 
@@ -333,13 +333,13 @@ class SimklClient:
                     started_at=entry.added_to_watchlist_at,
                 )
             )
-        return json.dumps(
+        return msgspec.json.encode(
             [item.model_dump(mode="json", exclude_none=True) for item in items]
-        )
+        ).decode()
 
     async def restore_list(self, backup: str) -> None:
         """Restore a Simkl backup produced by backup_list."""
-        payload = json.loads(backup)
+        payload = msgspec.json.decode(backup)
         backups = [SimklListBackupEntry.model_validate(item) for item in payload]
 
         await self.refresh_user_list(force_full=True)
@@ -858,4 +858,4 @@ class SimklClient:
             text = await response.text()
             if not text:
                 return None
-            return json.loads(text)
+            return msgspec.json.decode(text)
