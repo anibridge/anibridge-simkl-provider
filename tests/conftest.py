@@ -22,7 +22,7 @@ from anibridge.providers.list.simkl.models import (
     SimklUser,
     SimklUserSettings,
 )
-from tests.fakes import FakeSimklClient
+from anibridge.providers.list.simkl.testing import FakeSimklClient
 
 
 @pytest.fixture()

@@ -1,5 +1,7 @@
 """Model-focused unit tests for the Simkl helpers."""
 
+import msgspec
+
 from anibridge.providers.list.simkl.models import (
     SimklIds,
     SimklListItem,
@@ -23,12 +25,13 @@ def test_simkl_ids_normalize_response_and_request_fields() -> None:
 
 def test_models_ignore_extra_fields() -> None:
     """API models should ignore fields we do not care about."""
-    item = SimklListItem.model_validate(
+    item = msgspec.convert(
         {
             "status": "watching",
             "watched_episodes_count": 4,
             "ignored": "value",
-        }
+        },
+        type=SimklListItem,
     )
 
     assert item.status == "watching"
@@ -37,8 +40,8 @@ def test_models_ignore_extra_fields() -> None:
 
 def test_models_coerce_strenum_fields_from_api_payloads() -> None:
     """API payload strings should parse into the typed enum-backed fields."""
-    media = SimklMedia.model_validate({"endpoint_type": "anime", "type": "tv"})
-    item = SimklListItem.model_validate({"status": "completed"})
+    media = msgspec.convert({"endpoint_type": "anime", "type": "tv"}, type=SimklMedia)
+    item = msgspec.convert({"status": "completed"}, type=SimklListItem)
 
     assert media.endpoint_type is SimklMediaKind.ANIME
     assert media.type is SimklSearchType.TV

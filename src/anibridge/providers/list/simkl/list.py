@@ -4,6 +4,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import cast
 
+import msgspec
 from anibridge.list import (
     ListEntry,
     ListMedia,
@@ -58,7 +59,7 @@ class SimklListProvider(ListProvider):
     def __init__(self, *, logger: ProviderLogger, config: dict | None = None) -> None:
         """Initialize the Simkl list provider."""
         super().__init__(logger=logger, config=config)
-        self.parsed_config = SimklListProviderConfig.model_validate(config or {})
+        self.parsed_config = msgspec.convert(config or {}, type=SimklListProviderConfig)
         self._client = SimklClient(
             client_id=self.parsed_config.client_id,
             token=self.parsed_config.token,

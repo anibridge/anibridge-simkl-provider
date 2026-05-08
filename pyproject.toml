@@ -26,7 +26,6 @@ dependencies = [
     "anibridge-list-base>=0.2.0",
     "anibridge-utils>=0.2.0",
     "msgspec>=0.21.1",
-    "pydantic>=2.12.5",
 ]
 
 [tool.ruff]

@@ -1,8 +1,10 @@
-"""Shared test doubles for the Simkl provider tests."""
+"""Test support helpers for the Simkl provider."""
 
 import json
 from dataclasses import dataclass, field
 from datetime import UTC
+
+import msgspec
 
 from anibridge.providers.list.simkl.models import (
     SimklAccount,
@@ -13,6 +15,8 @@ from anibridge.providers.list.simkl.models import (
     SimklUser,
     SimklUserSettings,
 )
+
+__all__ = ["FakeSimklClient"]
 
 
 @dataclass
@@ -30,6 +34,7 @@ class FakeSimklClient:
     )
 
     def __post_init__(self) -> None:
+        """Populate convenience fields used by the tests."""
         self.user_timezone = UTC
         self.updated_entry_states: list[SimklListEntryState] = []
         self.deleted_media_ids: list[tuple[int, SimklMediaKind]] = []
@@ -39,21 +44,25 @@ class FakeSimklClient:
             self.search_results = list(self.medias.values())
 
     async def initialize(self) -> None:
+        """No-op initialization method."""
         return None
 
     async def close(self) -> None:
+        """No-op close method."""
         return None
 
     def clear_cache(self) -> None:
+        """No-op cache clearer for the fake client."""
         return None
 
     async def backup_list(self) -> str:
+        """Return a serialized backup payload for the fake list state."""
         payload = []
         for simkl_id, media in self.medias.items():
             item = self.entries.get(simkl_id)
             payload.append(
                 {
-                    "media": media.model_dump(mode="json", exclude_none=True),
+                    "media": msgspec.json.decode(msgspec.json.encode(media)),
                     "kind": media.endpoint_type,
                     "status": item.status if item else None,
                     "progress": item.watched_episodes_count if item else 0,
@@ -68,19 +77,24 @@ class FakeSimklClient:
         return json.dumps(payload)
 
     async def restore_list(self, backup: str) -> None:
+        """Record the last restored backup payload."""
         self.last_restore = backup
 
     async def get_media(self, simkl_id: int) -> SimklMedia | None:
+        """Return the cached media object for a Simkl ID."""
         return self.medias.get(simkl_id)
 
     def get_list_entry(self, simkl_id: int) -> SimklListItem | None:
+        """Return the cached list entry for a Simkl ID."""
         return self.entries.get(simkl_id)
 
     def get_media_kind(self, simkl_id: int) -> SimklMediaKind | None:
+        """Return the cached media kind for a Simkl ID."""
         media = self.medias.get(simkl_id)
         return media.endpoint_type if media else None
 
     async def search_media(self, query: str, *, limit: int = 10) -> list[SimklMedia]:
+        """Return cached search results filtered by title."""
         lowered = query.lower()
         return [
             media for media in self.search_results if lowered in media.title.lower()
@@ -89,11 +103,13 @@ class FakeSimklClient:
     async def resolve_media_id(
         self, provider: str, entry_id: str, scope: str | None = None
     ) -> str | None:
+        """Resolve an external ID using the fake mapping table."""
         return self.resolved.get((provider, entry_id, scope))
 
     async def update_media_entry(
         self, media: SimklMedia, entry_state: SimklListEntryState
     ) -> None:
+        """Apply entry-state updates to the cached list entry."""
         self.updated_entry_states.append(entry_state)
         item = self.entries.get(entry_state.media_id)
         if item is not None:
@@ -107,6 +123,7 @@ class FakeSimklClient:
             )
 
     async def delete_media_entry(self, media: SimklMedia, kind: SimklMediaKind) -> None:
+        """Remove the cached list entry for the given media item."""
         simkl_id = media.ids.canonical_simkl_id
         if simkl_id is None:
             return

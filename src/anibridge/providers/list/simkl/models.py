@@ -3,13 +3,11 @@
 from datetime import datetime
 from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, Field
+import msgspec
 
 
-class SimklModel(BaseModel):
+class SimklModel(msgspec.Struct, kw_only=True):
     """Base model for Simkl API payloads."""
-
-    model_config = ConfigDict(extra="ignore")
 
 
 class SimklMediaKind(StrEnum):
@@ -127,7 +125,7 @@ class SimklMedia(SimklModel):
     title: str = ""
     year: int | None = None
     poster: str | None = None
-    ids: SimklIds = Field(default_factory=SimklIds)
+    ids: SimklIds = msgspec.field(default_factory=SimklIds)
     url: str | None = None
     endpoint_type: SimklMediaKind | None = None
     type: SimklSearchType | None = None
@@ -159,9 +157,9 @@ class SimklListItem(SimklModel):
 class SimklAllItems(SimklModel):
     """Response from /sync/all-items."""
 
-    shows: list[SimklListItem] = Field(default_factory=list)
-    anime: list[SimklListItem] = Field(default_factory=list)
-    movies: list[SimklListItem] = Field(default_factory=list)
+    shows: list[SimklListItem] = msgspec.field(default_factory=list)
+    anime: list[SimklListItem] = msgspec.field(default_factory=list)
+    movies: list[SimklListItem] = msgspec.field(default_factory=list)
 
 
 class SimklMemo(SimklModel):
@@ -181,9 +179,9 @@ class SimklEpisodePayload(SimklModel):
 class SimklItemPayload(SimklModel):
     """Movie/show payload for Simkl mutation endpoints."""
 
+    ids: SimklIds
     title: str | None = None
     year: int | str | None = None
-    ids: SimklIds
     to: SimklListStatus | None = None
     status: SimklListStatus | None = None
     added_at: datetime | None = None
@@ -197,9 +195,9 @@ class SimklItemPayload(SimklModel):
 class SimklMutationBody(SimklModel):
     """Request body for Simkl list mutations."""
 
-    shows: list[SimklItemPayload] = Field(default_factory=list)
-    movies: list[SimklItemPayload] = Field(default_factory=list)
-    episodes: list[SimklEpisodePayload] = Field(default_factory=list)
+    shows: list[SimklItemPayload] = msgspec.field(default_factory=list)
+    movies: list[SimklItemPayload] = msgspec.field(default_factory=list)
+    episodes: list[SimklEpisodePayload] = msgspec.field(default_factory=list)
 
 
 class SimklMutationStatusResponse(SimklModel):
@@ -223,15 +221,15 @@ class SimklMutationAdded(SimklModel):
     movies: list[SimklItemPayload] | int | None = None
     shows: list[SimklItemPayload] | int | None = None
     episodes: list[SimklEpisodePayload] | int | None = None
-    statuses: list[SimklMutationStatus] = Field(default_factory=list)
+    statuses: list[SimklMutationStatus] = msgspec.field(default_factory=list)
 
 
 class SimklMutationNotFound(SimklModel):
     """Mutation not-found section."""
 
-    movies: list[SimklItemPayload] = Field(default_factory=list)
-    shows: list[SimklItemPayload] = Field(default_factory=list)
-    episodes: list[SimklEpisodePayload] = Field(default_factory=list)
+    movies: list[SimklItemPayload] = msgspec.field(default_factory=list)
+    shows: list[SimklItemPayload] = msgspec.field(default_factory=list)
+    episodes: list[SimklEpisodePayload] = msgspec.field(default_factory=list)
 
 
 class SimklMutationResponse(SimklModel):

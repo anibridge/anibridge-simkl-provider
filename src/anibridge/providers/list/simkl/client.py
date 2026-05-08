@@ -3,7 +3,7 @@
 import importlib.metadata
 from collections.abc import Sequence
 from datetime import UTC, datetime
-from typing import ClassVar
+from typing import Any, ClassVar, cast
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 import aiohttp
@@ -56,6 +56,23 @@ _LIST_ACTIVITY_FIELDS = (
 )
 
 _DONT_REMEMBER_WATCHED_AT = datetime(1970, 1, 1, tzinfo=UTC)
+
+
+def _without_none(value: object) -> object:
+    if isinstance(value, dict):
+        return {
+            key: _without_none(item) for key, item in value.items() if item is not None
+        }
+    if isinstance(value, list):
+        return [_without_none(item) for item in value]
+    return value
+
+
+def _payload_dict(value: object) -> dict[str, Any]:
+    return cast(
+        dict[str, Any],
+        _without_none(msgspec.json.decode(msgspec.json.encode(value))),
+    )
 
 
 class SimklClient:
@@ -147,12 +164,12 @@ class SimklClient:
     async def get_user(self) -> SimklUserSettings:
         """Return the authenticated user's settings."""
         data = await self._make_request("POST", "/users/settings")
-        return SimklUserSettings.model_validate(data)
+        return msgspec.convert(data, type=SimklUserSettings)
 
     async def get_activities(self) -> SimklActivities:
         """Return activity timestamps for the authenticated user."""
         data = await self._make_request("GET", "/sync/activities")
-        return SimklActivities.model_validate(data)
+        return msgspec.convert(data, type=SimklActivities)
 
     async def refresh_user_list(self, *, force_full: bool = False) -> None:
         """Refresh the cached list state using the activities endpoint first."""
@@ -199,7 +216,7 @@ class SimklClient:
             return media
 
         data = await self._make_request("GET", "/search/id", params={"simkl": simkl_id})
-        results = [SimklMedia.model_validate(item) for item in data or []]
+        results = [msgspec.convert(item, type=SimklMedia) for item in data or []]
         if not results:
             return None
         media = results[0]
@@ -238,7 +255,7 @@ class SimklClient:
             )
             for item in payload or []:
                 media = self._normalize_media(
-                    search_type, SimklMedia.model_validate(item)
+                    search_type, msgspec.convert(item, type=SimklMedia)
                 )
                 simkl_id = media.ids.canonical_simkl_id
                 if simkl_id is None or simkl_id in seen:
@@ -270,7 +287,7 @@ class SimklClient:
             "type": normalized_type,
         }
         data = await self._make_request("GET", "/search/id", params=params)
-        results = [SimklMedia.model_validate(item) for item in data or []]
+        results = [msgspec.convert(item, type=SimklMedia) for item in data or []]
         if not results:
             return None
 
@@ -334,13 +351,16 @@ class SimklClient:
                 )
             )
         return msgspec.json.encode(
-            [item.model_dump(mode="json", exclude_none=True) for item in items]
+            [
+                _without_none(msgspec.json.decode(msgspec.json.encode(item)))
+                for item in items
+            ]
         ).decode()
 
     async def restore_list(self, backup: str) -> None:
         """Restore a Simkl backup produced by backup_list."""
         payload = msgspec.json.decode(backup)
-        backups = [SimklListBackupEntry.model_validate(item) for item in payload]
+        backups = [msgspec.convert(item, type=SimklListBackupEntry) for item in payload]
 
         await self.refresh_user_list(force_full=True)
         desired_ids = {
@@ -375,7 +395,7 @@ class SimklClient:
 
     async def _full_sync_all(self) -> None:
         data = await self._make_request("GET", "/sync/all-items/")
-        parsed = SimklAllItems.model_validate(data or {})
+        parsed = msgspec.convert(data or {}, type=SimklAllItems)
         for kind in _MEDIA_KINDS:
             self._replace_kind(kind, getattr(parsed, kind.value))
 
@@ -385,7 +405,7 @@ class SimklClient:
             "/sync/all-items/",
             params={"extended": "simkl_ids_only"},
         )
-        parsed = SimklAllItems.model_validate(data or {})
+        parsed = msgspec.convert(data or {}, type=SimklAllItems)
         for kind in kinds:
             self._remove_missing_kind_items(kind, getattr(parsed, kind.value))
 
@@ -415,7 +435,7 @@ class SimklClient:
         data = await self._make_request(
             "GET", f"/sync/all-items/{kind.value}/", params=params
         )
-        parsed = SimklAllItems.model_validate(data or {})
+        parsed = msgspec.convert(data or {}, type=SimklAllItems)
         for item in getattr(parsed, kind.value):
             self._store_list_item(kind, item)
 
@@ -428,7 +448,7 @@ class SimklClient:
         data = await self._make_request(
             "POST", f"/sync/ratings/{kind.value}", params=params
         )
-        parsed = SimklAllItems.model_validate(data or {})
+        parsed = msgspec.convert(data or {}, type=SimklAllItems)
         for item in getattr(parsed, kind.value):
             simkl_id = self._get_list_item_simkl_id(item)
             if simkl_id is None:
@@ -470,7 +490,7 @@ class SimklClient:
             await self._make_request(
                 "POST",
                 "/sync/history",
-                body=payload.model_dump(mode="json", exclude_none=True),
+                body=_payload_dict(payload),
             )
             return
 
@@ -487,7 +507,7 @@ class SimklClient:
         await self._make_request(
             "POST",
             "/sync/add-to-list",
-            body=payload.model_dump(mode="json", exclude_none=True),
+            body=_payload_dict(payload),
         )
 
     async def _update_show_entry(
@@ -513,7 +533,7 @@ class SimklClient:
             await self._make_request(
                 "POST",
                 "/sync/history",
-                body=payload.model_dump(mode="json", exclude_none=True),
+                body=_payload_dict(payload),
             )
             return
 
@@ -530,7 +550,7 @@ class SimklClient:
         await self._make_request(
             "POST",
             "/sync/add-to-list",
-            body=list_payload.model_dump(mode="json", exclude_none=True),
+            body=_payload_dict(list_payload),
         )
 
         if self._get_media_kind(entry_state.kind) is not SimklMediaKind.ANIME:
@@ -553,7 +573,7 @@ class SimklClient:
             await self._make_request(
                 "POST",
                 "/sync/history",
-                body=add_payload.model_dump(mode="json", exclude_none=True),
+                body=_payload_dict(add_payload),
             )
         elif target_progress < current_progress:
             remove_payload = SimklMutationBody(
@@ -569,7 +589,7 @@ class SimklClient:
             await self._make_request(
                 "POST",
                 "/sync/history/remove",
-                body=remove_payload.model_dump(mode="json", exclude_none=True),
+                body=_payload_dict(remove_payload),
             )
 
     async def _set_rating(
@@ -585,16 +605,16 @@ class SimklClient:
         response = await self._make_request(
             "POST",
             "/sync/ratings",
-            body=payload.model_dump(mode="json", exclude_none=True),
+            body=_payload_dict(payload),
         )
-        SimklMutationResponse.model_validate(response or {})
+        msgspec.convert(response or {}, type=SimklMutationResponse)
 
     async def _remove_rating(self, media: SimklMedia, kind: SimklMediaKind) -> None:
         payload = self._build_mutation_body(kind, [self._build_item_payload(media)])
         await self._make_request(
             "POST",
             "/sync/ratings/remove",
-            body=payload.model_dump(mode="json", exclude_none=True),
+            body=_payload_dict(payload),
         )
 
     def _build_mutation_body(
@@ -635,7 +655,7 @@ class SimklClient:
         await self._make_request(
             "POST",
             "/sync/history/remove",
-            body=payload.model_dump(mode="json", exclude_none=True),
+            body=_payload_dict(payload),
         )
 
     def _replace_kind(
@@ -680,14 +700,16 @@ class SimklClient:
         if item is not None and item.total_episodes_count is not None:
             total = item.total_episodes_count
 
-        return media.model_copy(
-            update={
+        return msgspec.convert(
+            {
+                **msgspec.to_builtins(media),
                 "endpoint_type": normalized_kind,
                 "anime_type": (item.anime_type if item is not None else None)
                 or media.anime_type,
                 "total_episodes": total,
                 "ep_count": total,
-            }
+            },
+            type=SimklMedia,
         )
 
     def _list_entry_progress(

@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, cast
 
 import aiohttp
+import msgspec
 import pytest
 from anibridge.utils.types import ProviderLogger
 
@@ -155,8 +156,8 @@ async def test_refresh_list_full_sync_loads_all_kinds(
         assert path == "/sync/all-items/"
         return {
             "shows": [],
-            "anime": [anime_entry.model_dump(mode="json", exclude_none=True)],
-            "movies": [movie_entry.model_dump(mode="json", exclude_none=True)],
+            "anime": [msgspec.json.decode(msgspec.json.encode(anime_entry))],
+            "movies": [msgspec.json.decode(msgspec.json.encode(movie_entry))],
         }
 
     client.get_activities = fake_activities  # ty: ignore[invalid-assignment]
@@ -267,8 +268,11 @@ async def test_refresh_list_uses_ratings_endpoint_for_rating_only_changes(
     async def fake_request(_method: str, path: str, **kwargs: Any) -> dict:
         calls.append((path, cast(dict[str, str | int] | None, kwargs.get("params"))))
         if path == "/sync/ratings/anime":
-            updated = anime_entry.model_copy(update={"user_rating": 10})
-            return {"anime": [updated.model_dump(mode="json", exclude_none=True)]}
+            updated = msgspec.convert(
+                {**msgspec.to_builtins(anime_entry), "user_rating": 10},
+                type=SimklListItem,
+            )
+            return {"anime": [msgspec.json.decode(msgspec.json.encode(updated))]}
         raise AssertionError(f"Unexpected request path: {path}")
 
     client.get_activities = fake_activities  # ty: ignore[invalid-assignment]
@@ -359,7 +363,7 @@ async def test_get_media_uses_search_id_fallback(
 
     async def fake_request(_method: str, path: str, **_: Any) -> list[dict]:
         assert path == "/search/id"
-        return [anime_media.model_dump(mode="json", exclude_none=True)]
+        return [msgspec.json.decode(msgspec.json.encode(anime_media))]
 
     client.refresh_user_list = noop_refresh  # ty: ignore[invalid-assignment]
     client._make_request = fake_request  # ty: ignore[invalid-assignment]
@@ -380,10 +384,10 @@ async def test_search_combines_unique_results(
 
     async def fake_request(_method: str, path: str, **_: Any) -> list[dict]:
         if path == "/search/anime":
-            return [anime_media.model_dump(mode="json", exclude_none=True)]
+            return [msgspec.json.decode(msgspec.json.encode(anime_media))]
         if path == "/search/movie":
-            return [movie_media.model_dump(mode="json", exclude_none=True)]
-        return [anime_media.model_dump(mode="json", exclude_none=True)]
+            return [msgspec.json.decode(msgspec.json.encode(movie_media))]
+        return [msgspec.json.decode(msgspec.json.encode(anime_media))]
 
     client._make_request = fake_request  # ty: ignore[invalid-assignment]
 
@@ -454,7 +458,7 @@ async def test_restore_list_preserves_started_at_backup_field(
     """Backup restore should preserve started_at but ignore repeats and finished_at."""
     backup = [
         {
-            "media": anime_media.model_dump(mode="json", exclude_none=True),
+            "media": msgspec.json.decode(msgspec.json.encode(anime_media)),
             "kind": "anime",
             "status": "watching",
             "progress": 3,
@@ -675,7 +679,10 @@ async def test_update_entry_uses_movie_payload_for_anime_movies(
     entry_state_factory: Callable[[int, str], SimklListEntryState],
 ) -> None:
     """Anime movies should mutate through movie payloads, not show payloads."""
-    anime_movie = anime_media.model_copy(update={"anime_type": "movie"})
+    anime_movie = msgspec.convert(
+        {**msgspec.to_builtins(anime_media), "anime_type": "movie"},
+        type=SimklMedia,
+    )
     simkl_id = anime_movie.ids.canonical_simkl_id or 0
     calls: list[str] = []
     bodies: list[dict[str, object] | None] = []
@@ -716,7 +723,10 @@ async def test_delete_entry_uses_movie_payload_for_anime_movies(
     anime_media: SimklMedia,
 ) -> None:
     """Anime movies should be removed through movie payloads."""
-    anime_movie = anime_media.model_copy(update={"anime_type": "movie"})
+    anime_movie = msgspec.convert(
+        {**msgspec.to_builtins(anime_media), "anime_type": "movie"},
+        type=SimklMedia,
+    )
     bodies: list[dict[str, object] | None] = []
 
     async def fake_request(_method: str, path: str, **kwargs: Any) -> dict:
